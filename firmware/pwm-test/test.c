@@ -42,6 +42,8 @@ int main() {
     // 500Hz PWM config: 250hz, 1500us <-> 2000us out of a possible 4000us
     // divisor = 192
 
+    // multishot will probably also work, but clkdiv=1 is not a good idea
+
     // basically servo standard
     // 1000 = min, 1500 = mid, 2000 = max
 
