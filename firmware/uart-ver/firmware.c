@@ -59,6 +59,41 @@ bool assertRange(i32 value, i32 min, i32 max) {
     return min <= value && value <= max;
 }
 
+/*** SECTION: COMMAND HEADERS ***/
+void cmdTest(u8 len, u8* data);
+void cmdReset(u8 len, u8* data);
+void cmdContinue(u8 len, u8* data);
+void cmdStop(u8 len, u8* data);
+void cmdGetAttr(u8 len, u8* data);
+
+void cmdThruster(u8 len, u8* data);
+void cmdThrusterMask(u8 len, u8* data);
+void cmdGetThruster(u8 len, u8* data);
+
+void cmdServo(u8 len, u8* data);
+void cmdGetServo(u8 len, u8* data);
+void cmdGetSensor(u8 len, u8* data);
+
+void cmdSetAutoReport(u8 len, u8* data);
+
+// responses
+
+void retHello();
+void retEcho(u8* data);
+void retAttr(u8 attr);
+void retSuccess(bool success);
+
+void retThruster(u8 idx);
+void retAllThrusters();
+
+void retServo(u8 idx);
+void retAllServos();
+
+void retFloatData(u8 param, float data);
+void retVector3Data(u8 param, float x, float y, float z);
+void retQuaternionData(u8 param, float w, float x, float y, float z);
+void retIntegerData(u8 param, u16 data);
+
 /*** SECTION: COMMUNICATIONS ***/
 
 #define MAX_UART_QUEUE      45
@@ -277,13 +312,69 @@ void initVoltSensor() {
 }
 
 float getVoltage() {
-    uint16_t val = adc_read();
+    adc_select_input(VOLTAGE_SENSOR - 26);
+    u16 val = adc_read();
     // conversion factor should be 7.8 * AREF, divide by 2^12 for unit conversion factor
     const float conversionFactor = 7.8 * 3.3 / (1 << 12);
     return val * conversionFactor;
 }
 
+void initVoltSensor() {
+    adc_init();
+    // does all our gpio_... work for us
+    adc_gpio_init(DEPTH_SENSOR);
+    // select input requires ADC channel, 0..3 match 26..29
+    adc_select_input(DEPTH_SENSOR - 26);
+}
+
+u16 getVoltage() {
+    adc_select_input(DEPTH_SENSOR - 26);
+    u16 val = adc_read();
+    // honestly just return the absolute value, we can calibrate in software
+    return val;
+}
+
 /*** SECTION: COMMANDS ***/
+void cmdTest(u8 len, u8* data) {
+    if (len == 0) retHello();
+    else retEcho(data);
+}
+
+void cmdReset(u8 len, u8* data) {
+
+}
+
+void cmdContinue(u8 len, u8* data);
+void cmdStop(u8 len, u8* data);
+void cmdGetAttr(u8 len, u8* data);
+
+void cmdThruster(u8 param, u8 len, u8* data);
+void cmdThrusterMask(u8 len, u8* data);
+void cmdGetThruster(u8 param, u8 len, u8* data);
+
+void cmdServo(u8 param, u8 len, u8* data);
+void cmdGetServo(u8 param, u8 len, u8* data);
+void cmdGetSensor(u8 param, u8 len, u8* data);
+
+void cmdSetAutoReport(u8 len, u8* data);
+
+// responses
+
+void retHello();
+void retEcho(u8* data);
+void retAttr(u8 attr);
+void retSuccess(bool success);
+
+void retThruster(u8 idx);
+void retAllThrusters();
+
+void retServo(u8 idx);
+void retAllServos();
+
+void retFloatData(u8 param, float data);
+void retVector3Data(u8 param, float x, float y, float z);
+void retQuaternionData(u8 param, float w, float x, float y, float z);
+void retIntegerData(u8 param, u16 data);
 
 
 /*** SECTION: MAIN ***/
