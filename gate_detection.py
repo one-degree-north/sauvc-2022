@@ -2,8 +2,8 @@ import cv2
 import numpy as np
 
 class GateDetection:
-    def __init__(self, path: str):
-        img = cv2.imread(path)
+    def __init__(self, img):
+        #img = cv2.imread(path)
         img = cv2.blur(img, (7, 7))
         self.img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         
