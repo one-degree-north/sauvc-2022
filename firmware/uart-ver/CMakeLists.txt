@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD 17)
 pico_sdk_init()
 
 add_executable(firmware
-    firmware.c
+    firmware.c bno055.c
 )
 
 pico_enable_stdio_usb(firmware 1)

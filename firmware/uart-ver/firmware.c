@@ -6,8 +6,10 @@
 #include "pico/stdlib.h"
 #include "pico/binary_info.h"
 #include <stdio.h>
+#include "bno055.h"
 
 // convenience things...
+#ifndef INT_SHORTHAND
 #define u8 uint8_t
 #define u16 uint16_t
 #define u32 uint32_t
@@ -16,6 +18,7 @@
 #define i16 int16_t
 #define i32 int32_t
 #define i64 int64_t
+#endif
 
 #ifndef MIN
 #define MIN(a, b)       (((a) < (b)) ? (a) : (b))
@@ -49,11 +52,6 @@
 #define KILLSWITCH 26
 #define VOLTAGE_SENSOR 27
 #define DEPTH_SENSOR 28
-
-// thruster configuration: OneShot42
-// MultiShot seems to unfortunately be too fast for PWM driver :sob:
-#define PERIOD_MS 42
-#define PWM_CLOCK_MHZ 24
 
 // servo configuration
 #define SERVO_MIN 1000
@@ -89,7 +87,19 @@ const u8 numServos = NUM_SERVOS;
 
 u8 fsm_state = STATE_STOPPED;
 
+// autoreporting
+
+// autoReport[0] is a dummy, autoReport[15] means all, and autoReport
+// should be synchronized with autoReport[15] whenever possible.
+bool autoReport[16] = {false, false, false, false, false, false, false, false,
+                       false, false, false, false, false, false, false, false};
+i64 prevReportTime;
+u64 autoReportInterval_us = 50000;
+
+
 /*** SECTION: UTILITIES ***/
+
+u8 dummy_ptr = 0;
 
 bool assertRange(i32 value, i32 min, i32 max) {
     return min <= value && value <= max;
@@ -555,9 +565,157 @@ void cmdGetServo(u8 param, u8 len, u8 *data) {
     else return retServo(param - 0x20);
 }
 
-void cmdGetSensor(u8 param, u8 len, u8 *data);
 
-void cmdSetAutoReport(u8 param, u8 len, u8 *data);
+void cmdGetSensor(u8 param, u8 len, u8 *data) {
+    if (param < 0x30 || param > 0x3F || param == 0x3D)
+        return retSuccess(false);
+
+    switch (param) {
+        case 0x31: {
+            float* accel = bno_accel();
+            retVector3Data(param, &accel[0], &accel[1], &accel[2]);
+            break;
+        }
+        case 0x32: {
+            float* mag = bno_magnet();
+            retVector3Data(param, &mag[0], &mag[1], &mag[2]);
+            break;
+        }
+        case 0x33: {
+            float* gyro = bno_gyro();
+            retVector3Data(param, &gyro[0], &gyro[1], &gyro[2]);
+            break;
+        }
+        case 0x34: {
+            float* orientation = bno_orientation();
+            retVector3Data(param, &orientation[0], &orientation[1], &orientation[2]);
+            break;
+        }
+        case 0x35: {
+            float* quaternion = bno_quaternion();
+            retQuaternionData(param, &quaternion[0], &quaternion[1], &quaternion[2], &quaternion[3]);
+            break;
+        }
+        case 0x36: {
+            float* linaccel = bno_lin_accel();
+            retVector3Data(param, &linaccel[0], &linaccel[1], &linaccel[2]);
+            break;
+        }
+        case 0x37: {
+            float* gravity = bno_gravity();
+            retVector3Data(param, &gravity[0], &gravity[1], &gravity[2]);
+            break;
+        }
+        case 0x38: {
+            u16 calibration = bno_calibration();
+            retIntegerData(param, calibration);
+            break;
+        }
+        case 0x39: {
+            u16 bno_system = bno_sys_status() << 8 | bno_sys_error();
+            retIntegerData(param, bno_system);
+            break;
+        }
+        case 0x3A: {
+            retIntegerData(param, bno_temperature());
+            break;
+        }
+        case 0x3B: {
+            float voltage = getVoltage();
+            retFloatData(param, &voltage);
+            break;
+        }
+        case 0x3C: {
+            retIntegerData(param, getDepth());
+            break;
+        }
+        case 0x3E: {
+            retIntegerData(param, getKillSwitch());
+            break;
+        }
+        case 0x3F: {
+            // literally everything above
+            // c switch case is annoying though
+            float* accel = bno_accel();
+            retVector3Data(param, &accel[0], &accel[1], &accel[2]);
+            float* mag = bno_magnet();
+            retVector3Data(param, &mag[0], &mag[1], &mag[2]);
+            float* gyro = bno_gyro();
+            retVector3Data(param, &gyro[0], &gyro[1], &gyro[2]);
+            float* orientation = bno_orientation();
+            retVector3Data(param, &orientation[0], &orientation[1], &orientation[2]);
+            float* quaternion = bno_quaternion();
+            retQuaternionData(param, &quaternion[0], &quaternion[1], &quaternion[2], &quaternion[3]);
+            float* linaccel = bno_lin_accel();
+            retVector3Data(param, &linaccel[0], &linaccel[1], &linaccel[2]);
+            float* gravity = bno_gravity();
+            retVector3Data(param, &gravity[0], &gravity[1], &gravity[2]);
+            u16 calibration = bno_calibration();
+            retIntegerData(param, calibration);
+            u16 bno_system = bno_sys_status() << 8 | bno_sys_error();
+            retIntegerData(param, bno_system);
+            retIntegerData(param, bno_temperature());
+            float voltage = getVoltage();
+            retFloatData(param, &voltage);
+            retIntegerData(param, getDepth());
+            retIntegerData(param, getKillSwitch());
+            break;
+        }
+        default:
+            retSuccess(false);
+            break;
+    }
+}
+
+void cmdSetAutoReport(u8 param, u8 len, u8 *data) {
+    if (param < 0x31 || param > 0x3F)
+        return retSuccess(false);
+
+    if (len == 1) autoReport[param - 0x30] = data[0] ? true : false;
+    if (len == 2) {
+        autoReportInterval_us = data[0] << 8 | data[1];
+    }
+    if (len == 3) {
+        if (param != 0x3D) return retSuccess(false);
+
+        bool enable = data[0] ? true : false;
+        u16 val = data[1] << 8 | data[2];
+        for (int i = 0; i < 16; ++i) {
+            if (val & 1) autoReport[i] = enable;
+            val >>= 1;
+        }
+    }
+
+    // if 0x3F was triggered, set all to on or off
+    if (param == 0x3F) {
+        for (int i = 0; i < 15; ++i) {
+            autoReport[i] = autoReport[15];
+        }
+    }
+
+}
+
+void setupAutoReport() {
+    prevReportTime = to_us_since_boot(get_absolute_time());
+    autoReportInterval_us = 50000;
+}
+
+void reportData() {
+    for (int i = 0; i < 16; ++i) {
+        if (autoReport[i]) {
+            cmdGetSensor(0x30 + i, 0, &dummy_ptr);
+        }
+    }
+}
+
+void loopAutoReport() {
+    i64 now = to_us_since_boot(get_absolute_time());
+    u64 elapsed = now - prevReportTime;
+    if (elapsed > autoReportInterval_us) {
+        prevReportTime = now;
+        reportData();
+    }
+}
 
 // responses
 
@@ -740,14 +898,18 @@ void setup() {
     setupOutputs();
     initKillSwitch(killSwitch);
     initVoltSensor();
+    bno_setup(BNO055_ADDR);
     setupUART();
     setupLEDs();
+    setupAutoReport();
 }
 
 void loop() {
+    bno_read();
     readUART();
     updateLEDs();
     loopOutputs();
+    loopAutoReport();
 }
 
 int main() {
