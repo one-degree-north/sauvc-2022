@@ -4,6 +4,7 @@
 #include "hardware/pwm.h"
 #include "hardware/uart.h"
 #include "pico/stdlib.h"
+#include "pico/binary_info.h"
 #include <stdio.h>
 
 // convenience things...
@@ -16,8 +17,17 @@
 #define i32 int32_t
 #define i64 int64_t
 
-#define MIN(a, b) (((a) < (b)) ? (a) : (b))
-#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#ifndef MIN
+#define MIN(a, b)       (((a) < (b)) ? (a) : (b))
+#endif
+
+#ifndef MAX
+#define MAX(a, b)       (((a) > (b)) ? (a) : (b))
+#endif
+
+#ifndef ABS
+#define ABS(a)          ((a) < 0 ? -(a) : (a))
+#endif
 
 // define GPIO pins
 #define THRUSTER_ONE 7
@@ -57,6 +67,14 @@
 #define NUM_THRUSTERS 6
 #define NUM_SERVOS 2
 
+// serial configuration
+#define MAX_UART_QUEUE 45
+#define PACKET_HEADER 0x4d
+#define PACKET_FOOTER 0xd4
+
+#define OUT_PACKET_HEADER 0x5c
+#define OUT_PACKET_FOOTER 0xc5
+
 // alias for constants
 const u8 thrusterPins[] =   {THRUSTER_ONE, THRUSTER_TWO, THRUSTER_THREE,
                              THRUSTER_FOUR, THRUSTER_FIVE, THRUSTER_SIX};
@@ -77,6 +95,14 @@ bool assertRange(i32 value, i32 min, i32 max) {
     return min <= value && value <= max;
 }
 
+u8 LRC (u8* bytes, u8 length) {
+    u8 LRC = 0x00;
+    for (int i = 0; i < length; ++i) {
+        LRC = (LRC + bytes[i]) & 0xFF;
+    }
+    return ((LRC ^ 0xFF) + 1) & 0xFF;
+}
+
 /*** SECTION: COMMAND HEADERS ***/
 void cmdTest(u8 len, u8 *data);
 void cmdReset(u8 len, u8 *data);
@@ -94,10 +120,14 @@ void cmdGetSensor(u8 param, u8 len, u8 *data);
 
 void cmdSetAutoReport(u8 param, u8 len, u8 *data);
 
+void soft_halt();
+void halt();
+void reset();
+
 // responses
 
 void retHello();
-void retEcho(u8 *data);
+void retEcho(u8 len, u8 *data);
 void retAttr(u8 attr);
 void retSuccess(bool success);
 
@@ -107,16 +137,12 @@ void retAllThrusters();
 void retServo(u8 idx);
 void retAllServos();
 
-void retFloatData(u8 param, float data);
-void retVector3Data(u8 param, float x, float y, float z);
-void retQuaternionData(u8 param, float w, float x, float y, float z);
+void retFloatData(u8 param, float* data);
+void retVector3Data(u8 param, float* x, float* y, float* z);
+void retQuaternionData(u8 param, float* w, float* x, float* y, float* z);
 void retIntegerData(u8 param, u16 data);
 
 /*** SECTION: COMMUNICATIONS ***/
-
-#define MAX_UART_QUEUE 45
-#define PACKET_HEADER 0x4d
-#define PACKET_FOOTER 0x5c
 
 u8 queue[MAX_UART_QUEUE];
 u8 *queuePtr = queue;
@@ -171,12 +197,12 @@ void parseByte(u8 c) {
 
     if (offset == 3) {
         // byte 3 defines final packet length, or 6+c
-        if (packetLength > 16) {
+        packetLength = 6 + c;
+        readByte(c);
+        if (packetLength > 18) {
             resetQueue();
             return;
         }
-        packetLength = 6 + c;
-        readByte(c);
         return;
     }
 
@@ -243,20 +269,29 @@ void updateLEDs() {
     }
 }
 
-void fsm_reset() {
+bool fsm_stop() {
     if (fsm_state == STATE_OPERATIONAL)
-        fsm_stop();
-    // TODO: FSM reset
+        soft_halt();
+
+    updateLEDs();
+    return true;
 }
 
-void fsm_continue() {
-    if (fsm_state == STATE_STOPPED)
-        fsm_state = STATE_OPERATIONAL;
-}
-
-void fsm_stop() {
+bool fsm_reset() {
     if (fsm_state == STATE_OPERATIONAL)
         halt();
+    reset();
+
+    updateLEDs();
+    return true;
+}
+
+bool fsm_continue() {
+    if (fsm_state == STATE_STOPPED)
+        fsm_state = STATE_OPERATIONAL;
+
+    updateLEDs();
+    return true;
 }
 
 /*** SECTION: THRUSTERS AND SERVOS ***/
@@ -368,7 +403,7 @@ void loopOutputs() {
     }
     // lerp each output to new value (closer to target)
     for (int i = 0; i < numThrusters; ++i) {
-        u16 targetDelta = abs(targetThrusterPos[i] - thrusterPos[i]);
+        u16 targetDelta = ABS(targetThrusterPos[i] - thrusterPos[i]);
         i8 sign = targetThrusterPos[i] - thrusterPos[i] > 0 ? 1 : -1;
         u16 maxDelta = MIN(MAX_DELTA_POS * elapsed_us / 1000000, 0xFFFF);
 
@@ -438,7 +473,7 @@ void cmdTest(u8 len, u8 *data) {
     if (len == 0)
         retHello();
     else
-        retEcho(data);
+        retEcho(len, data);
 }
 
 void cmdReset(u8 len, u8 *data) { retSuccess(fsm_reset()); }
@@ -522,27 +557,182 @@ void cmdGetServo(u8 param, u8 len, u8 *data) {
 
 void cmdGetSensor(u8 param, u8 len, u8 *data);
 
-void cmdSetAutoReport(u8 len, u8 *data);
+void cmdSetAutoReport(u8 param, u8 len, u8 *data);
 
 // responses
 
-void retHello();
-void retEcho(u8 *data);
-void retAttr(u8 attr);
-void retSuccess(bool success);
+void uart_write_data(u8* data, u8 length) {
+    // data includes command, param, len.
+    u8 lrc = LRC(data, length);
 
-void retThruster(u8 idx);
-void retAllThrusters();
+      uart_putc(uart0, OUT_PACKET_HEADER);
+    for (int i = 0; i < length; ++i) {
+          uart_putc(uart0, data[i]);
+    }
+      uart_putc(uart0, lrc);
+      uart_putc(uart0, OUT_PACKET_FOOTER);
+}
 
-void retServo(u8 idx);
-void retAllServos();
+void retHello() {
+    u8 bytes[] = {
+        0x00, 0x00, 5,
+        'h', 'e', 'l', 'l', 'o'
+    };
+    uart_write_data(bytes, 8);
+}
 
-void retFloatData(u8 param, float data);
-void retVector3Data(u8 param, float x, float y, float z);
-void retQuaternionData(u8 param, float w, float x, float y, float z);
-void retIntegerData(u8 param, u16 data);
+void retEcho(u8 len, u8 *data) {
+    // incomplete write, therefore we cannot use uart_write_data
+      uart_putc(uart0, OUT_PACKET_HEADER);
+      uart_putc(uart0, 0x00);
+      uart_putc(uart0, 0x00);
+      uart_putc(uart0, len);
+    for (int i = 0; i < len; ++i) {
+          uart_putc(uart0, data[i]);
+    }
+      uart_putc(uart0, lrc);
+      uart_putc(uart0, OUT_PACKET_FOOTER);
+}
+
+void retAttr(u8 attr) {
+    u8 bytes[] = {
+        0x00, 0x0a, 1,
+        attr
+    };
+    uart_write_data(bytes, 4);
+}
+
+void retSuccess(bool success) {
+    u8 bytes[] = {
+        0x0f, 0x0f, 1,
+        (u8) success
+    };
+    uart_write_data(bytes, 4);
+}
+
+void retThruster(u8 idx) {
+    u8* ptr = (u8*) &thrusterPos[idx];
+
+    u8 bytes[] = {
+        0x1a, 0x10 + idx, 2,
+        ptr[0], ptr[1]
+    };
+    uart_write_data(bytes, 5);
+}
+
+void retAllThrusters() {
+    u8* t0 = (u8*) &thrusterPos[0];
+    u8* t1 = (u8*) &thrusterPos[1];
+    u8* t2 = (u8*) &thrusterPos[2];
+    u8* t3 = (u8*) &thrusterPos[3];
+    u8* t4 = (u8*) &thrusterPos[4];
+    u8* t5 = (u8*) &thrusterPos[5];
+
+    u8 bytes[] = {
+        0x1a, 0x1f, 12,
+        t0[0], t0[1], t1[0], t1[1], t2[0], t2[1], t3[0], t3[1], t4[0], t4[1], t5[0], t5[1]
+    };
+    uart_write_data(bytes, 15);
+}
+
+void retServo(u8 idx) {
+    u8* ptr = (u8*) &servoPos[idx];
+
+    u8 bytes[] = {
+        0x2a, 0x20 + idx, 2,
+        ptr[0], ptr[1]
+    };
+    uart_write_data(bytes, 5);
+}
+
+void retAllServos() {
+    u8* s0 = (u8*) &servoPos[0];
+    u8* s1 = (u8*) &servoPos[1];
+
+    u8 bytes[] = {
+        0x2a, 0x2f, 4,
+        s0[0], s0[1], s1[0], s1[1]
+    };
+    uart_write_data(bytes, 7);
+}
+
+void retFloatData(u8 param, float* data) {
+    u8* ptr = (u8*) data;
+
+    u8 bytes[] = {
+        0x33, param, 4,
+        ptr[0], ptr[1], ptr[2], ptr[3]
+    };
+    uart_write_data(bytes, 7);
+}
+
+void retVector3Data(u8 param, float* x, float* y, float* z) {
+    u8* x_ptr = (u8*) x;
+    u8* y_ptr = (u8*) y;
+    u8* z_ptr = (u8*) z;
+
+    u8 bytes[] = {
+        0x33, param, 12,
+        x_ptr[0], x_ptr[1], x_ptr[2], x_ptr[3],
+        y_ptr[0], y_ptr[1], y_ptr[2], y_ptr[3],
+        z_ptr[0], z_ptr[1], z_ptr[2], z_ptr[3]
+    };
+    uart_write_data(bytes, 15);
+}
+
+void retQuaternionData(u8 param, float* w, float* x, float* y, float* z) {
+    u8* w_ptr = (u8*) w;
+    u8* x_ptr = (u8*) x;
+    u8* y_ptr = (u8*) y;
+    u8* z_ptr = (u8*) z;
+
+    u8 bytes[] = {
+        0x33, param, 16,
+        w_ptr[0], w_ptr[1], w_ptr[2], w_ptr[3],
+        x_ptr[0], x_ptr[1], x_ptr[2], x_ptr[3],
+        y_ptr[0], y_ptr[1], y_ptr[2], y_ptr[3],
+        z_ptr[0], z_ptr[1], z_ptr[2], z_ptr[3]
+    };
+    uart_write_data(bytes, 19);
+}
+
+void retIntegerData(u8 param, u16 data) {
+    u8 upper = data / 0xFF;
+    u8 lower = data % 0xFF;
+    u8 bytes[] = {
+        0x33, param, 2,
+        upper, lower
+    };
+    uart_write_data(bytes, 5);
+}
 
 /*** SECTION: MAIN ***/
+
+void soft_halt() {
+    for (int i = 0; i < numThrusters; ++i) {
+        targetThrusterPos[i] = 1500;
+    }
+    loopOutputs();
+}
+
+void halt() {
+    for (int i = 0; i < numThrusters; ++i) {
+        targetThrusterPos[i] = 1500;
+        thrusterPos[i] = 1500;
+    }
+    loopOutputs();
+}
+
+void reset() {
+    for (int i = 0; i < numThrusters; ++i) {
+        thrusterPos[i] = 1500;
+        targetThrusterPos[i] = 1500;
+    }
+    for (int i = 0; i < numServos; ++i) {
+        servoPos[i] = 1500;
+    }
+    loopOutputs();
+}
 
 void setup() {
     // before we do ANYTHING, set the system clock to 96MHz
@@ -561,6 +751,21 @@ void loop() {
 }
 
 int main() {
+    bi_decl(bi_program_description("UART version of SAS SAUVC 2022 firmware"));
+    bi_decl(bi_1pin_with_name(THRUSTER_ONE, "Thruster 1"));
+    bi_decl(bi_1pin_with_name(THRUSTER_TWO, "Thruster 2"));
+    bi_decl(bi_1pin_with_name(THRUSTER_THREE, "Thruster 3"));
+    bi_decl(bi_1pin_with_name(THRUSTER_FOUR, "Thruster 4"));
+    bi_decl(bi_1pin_with_name(THRUSTER_FIVE, "Thruster 5"));
+    bi_decl(bi_1pin_with_name(THRUSTER_SIX, "Thruster 6"));
+    bi_decl(bi_1pin_with_name(SERVO_LEFT, "Servo 1"));
+    bi_decl(bi_1pin_with_name(SERVO_RIGHT, "Servo 2"));
+    bi_decl(bi_1pin_with_name(RED_LED, "Red LED"));
+    bi_decl(bi_1pin_with_name(GREEN_LED, "Green LED"));
+    bi_decl(bi_1pin_with_name(VOLTAGE_SENSOR, "Voltage Sensor"));
+    bi_decl(bi_1pin_with_name(DEPTH_SENSOR, "Depth Sensor"));
+    bi_decl(bi_1pin_with_name(KILLSWITCH, "Killswitch"));
+
     setup();
 
     while (true) {
