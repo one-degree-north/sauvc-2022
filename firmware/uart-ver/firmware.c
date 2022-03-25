@@ -360,6 +360,8 @@ void initServo(uint pin) {
 }
 
 void setServo(uint servo, uint level) {
+    if (fsm_state == STATE_STOPPED) return;
+
     servoPos[servo] = level;
 
     // level: [1000, 2000]
@@ -373,21 +375,29 @@ void setServo(uint servo, uint level) {
 }
 
 void runThruster(uint thruster, uint level) {
-    // level: [0, 1000]
-    if (!assertRange(level, 0, 1000))
+    if (fsm_state == STATE_STOPPED) level = 1500;
+
+    // level: [1000, 2000]
+    if (!assertRange(level, 1000, 2000))
         return;
 
     u8 slice = pwm_gpio_to_slice_num(thrusterPins[thruster]);
     u8 channel = pwm_gpio_to_channel(thrusterPins[thruster]);
 
-    pwm_set_chan_level(slice, channel, level + 1000);
+    pwm_set_chan_level(slice, channel, level);
 }
 
 void setThrusterTarget(uint thruster, uint level) {
+    if (fsm_state == STATE_STOPPED) return;
+
     targetThrusterPos[thruster] = level;
 }
 
-void setThruster(uint thruster, uint level) { thrusterPos[thruster] = level; }
+void setThruster(uint thruster, uint level) {
+    if (fsm_state == STATE_STOPPED) return;
+
+    thrusterPos[thruster] = level;
+}
 
 void setupOutputs() {
     for (int i = 0; i < numThrusters; ++i) {
@@ -612,7 +622,7 @@ void cmdGetSensor(u8 param, u8 len, u8 *data) {
             break;
         }
         case 0x39: {
-            u16 bno_system = bno_sys_status() << 8 | bno_sys_error();
+            u16 bno_system = (bno_sys_status() << 8) | bno_sys_error();
             retIntegerData(param, bno_system);
             break;
         }
@@ -652,7 +662,7 @@ void cmdGetSensor(u8 param, u8 len, u8 *data) {
             retVector3Data(param, &gravity[0], &gravity[1], &gravity[2]);
             u16 calibration = bno_calibration();
             retIntegerData(param, calibration);
-            u16 bno_system = bno_sys_status() << 8 | bno_sys_error();
+            u16 bno_system = (bno_sys_status() << 8) | bno_sys_error();
             retIntegerData(param, bno_system);
             retIntegerData(param, bno_temperature());
             float voltage = getVoltage();
@@ -673,13 +683,13 @@ void cmdSetAutoReport(u8 param, u8 len, u8 *data) {
 
     if (len == 1) autoReport[param - 0x30] = data[0] ? true : false;
     if (len == 2) {
-        autoReportInterval_us = data[0] << 8 | data[1];
+        autoReportInterval_us = (data[0] << 8) | data[1];
     }
     if (len == 3) {
         if (param != 0x3D) return retSuccess(false);
 
         bool enable = data[0] ? true : false;
-        u16 val = data[1] << 8 | data[2];
+        u16 val = (data[1] << 8) | data[2];
         for (int i = 0; i < 16; ++i) {
             if (val & 1) autoReport[i] = enable;
             val >>= 1;
@@ -892,6 +902,12 @@ void reset() {
     loopOutputs();
 }
 
+void fsm_interrupt_loop() {
+    if (getKillSwitch() && fsm_state == STATE_OPERATIONAL) {
+        fsm_stop();
+    }
+}
+
 void setup() {
     // before we do ANYTHING, set the system clock to 96MHz
     set_sys_clock_khz(96000, false);
@@ -908,6 +924,7 @@ void loop() {
     bno_read();
     readUART();
     updateLEDs();
+    fsm_interrupt_loop();
     loopOutputs();
     loopAutoReport();
 }

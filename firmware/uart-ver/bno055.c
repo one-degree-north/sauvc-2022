@@ -114,9 +114,9 @@ void bno_read() {
 
 // TODO: FIX VALUES, THEY CANT JUST BE TREATED AS SHORT 16 BIT INT
 float* bno_accel() {
-    i16 x = *((i16*) &buf[0x08]);
-    i16 y = *((i16*) &buf[0x0A]);
-    i16 z = *((i16*) &buf[0x0C]);
+    i16 x = (buf[0x09] << 8) | buf[0x08];
+    i16 y = (buf[0x0B] << 8) | buf[0x0A];
+    i16 z = (buf[0x0D] << 8) | buf[0x0C];
 
     // 100 lower bits per m/s^2
     accel[0] = x / 100.0;
@@ -127,9 +127,9 @@ float* bno_accel() {
 }
 
 float* bno_magnet() {
-    i16 x = *((i16*) &buf[0x0E]);
-    i16 y = *((i16*) &buf[0x10]);
-    i16 z = *((i16*) &buf[0x12]);
+    i16 x = (buf[0x0F] << 8) | buf[0x0E];
+    i16 y = (buf[0x11] << 8) | buf[0x10];
+    i16 z = (buf[0x13] << 8) | buf[0x12];
 
     // 16 lower bits per microtesla
     mag[0] = x / 16.0;
@@ -140,9 +140,9 @@ float* bno_magnet() {
 }
 
 float* bno_gyro() {
-    i16 x = *((i16*) &buf[0x14]);
-    i16 y = *((i16*) &buf[0x16]);
-    i16 z = *((i16*) &buf[0x18]);
+    i16 x = (buf[0x15] << 8) | buf[0x14];
+    i16 y = (buf[0x17] << 8) | buf[0x16];
+    i16 z = (buf[0x19] << 8) | buf[0x18];
 
     // 16 lower bits per degree
     gyro[0] = x / 16.0;
@@ -153,9 +153,9 @@ float* bno_gyro() {
 }
 
 float* bno_orientation() {
-    i16 yaw = *((i16*) &buf[0x1A]);
-    i16 pitch = *((i16*) &buf[0x1C]);
-    i16 roll = *((i16*) &buf[0x1E]);
+    i16 yaw = (buf[0x1B] << 8) | buf[0x1A];
+    i16 pitch = (buf[0x1D] << 8) | buf[0x1C];
+    i16 roll = (buf[0x1F] << 8) | buf[0x1E];
 
     // 16 lower bits per degree
     orientation[0] = yaw / 16.0;
@@ -166,10 +166,10 @@ float* bno_orientation() {
 }
 
 float* bno_quaternion() {
-    i16 w = *((i16*) &buf[0x20]);
-    i16 x = *((i16*) &buf[0x22]);
-    i16 y = *((i16*) &buf[0x24]);
-    i16 z = *((i16*) &buf[0x26]);
+    i16 w = (buf[0x21] << 8) | buf[0x20];
+    i16 x = (buf[0x23] << 8) | buf[0x22];
+    i16 y = (buf[0x25] << 8) | buf[0x24];
+    i16 z = (buf[0x27] << 8) | buf[0x26];
 
     // quaternions are unitless
     // technically should divide them by 2^14,
@@ -183,9 +183,9 @@ float* bno_quaternion() {
 }
 
 float* bno_lin_accel() {
-    i16 x = *((i16*) &buf[0x28]);
-    i16 y = *((i16*) &buf[0x2A]);
-    i16 z = *((i16*) &buf[0x2C]);
+    i16 x = (buf[0x29] << 8) | buf[0x28];
+    i16 y = (buf[0x2B] << 8) | buf[0x2A];
+    i16 z = (buf[0x2D] << 8) | buf[0x2C];
 
     // 100 lower bits per m/s^2
     linaccel[0] = x / 100.0;
@@ -196,9 +196,9 @@ float* bno_lin_accel() {
 }
 
 float* bno_gravity() {
-    i16 x = *((i16*) &buf[0x2E]);
-    i16 y = *((i16*) &buf[0x30]);
-    i16 z = *((i16*) &buf[0x32]);
+    i16 x = (buf[0x2F] << 8) | buf[0x2E];
+    i16 y = (buf[0x31] << 8) | buf[0x30];
+    i16 z = (buf[0x33] << 8) | buf[0x32];
 
     // 100 lower bits per m/s^2
     gravity[0] = x / 100.0;
