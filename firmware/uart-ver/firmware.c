@@ -1,57 +1,75 @@
-#include <stdio.h>
-#include "pico/stdlib.h"
+#include "hardware/adc.h"
 #include "hardware/gpio.h"
+#include "hardware/i2c.h"
 #include "hardware/pwm.h"
 #include "hardware/uart.h"
-#include "hardware/i2c.h"
-#include "hardware/adc.h"
-
+#include "pico/stdlib.h"
+#include <stdio.h>
 
 // convenience things...
-#define u8              uint8_t
-#define u16             uint16_t
-#define u32             uint32_t
-#define i8              uint8_t
-#define i16             uint16_t
-#define i32             uint32_t
+#define u8 uint8_t
+#define u16 uint16_t
+#define u32 uint32_t
+#define u64 uint64_t
+#define i8 int8_t
+#define i16 int16_t
+#define i32 int32_t
+#define i64 int64_t
+
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
 // define GPIO pins
-#define THRUSTER_ONE    7
-#define THRUSTER_TWO    8
-#define THRUSTER_THREE  9
-#define THRUSTER_FOUR   10
-#define THRUSTER_FIVE   11
-#define THRUSTER_SIX    12
+#define THRUSTER_ONE 7
+#define THRUSTER_TWO 8
+#define THRUSTER_THREE 9
+#define THRUSTER_FOUR 10
+#define THRUSTER_FIVE 11
+#define THRUSTER_SIX 12
 
-#define SERVO_LEFT      24
-#define SERVO_RIGHT     25
+#define MAX_DELTA_POS 2000 // delta us per second
+
+#define SERVO_LEFT 24
+#define SERVO_RIGHT 25
+
+#define RED_LED 18
+#define GREEN_LED 19
 
 // inputs
-#define KILLSWITCH      26
-#define VOLTAGE_SENSOR  27
+#define KILLSWITCH 26
+#define VOLTAGE_SENSOR 27
+#define DEPTH_SENSOR 28
 
 // thruster configuration: OneShot42
 // MultiShot seems to unfortunately be too fast for PWM driver :sob:
-#define PERIOD_MS       42
-#define PWM_CLOCK_MHZ   24
+#define PERIOD_MS 42
+#define PWM_CLOCK_MHZ 24
 
 // servo configuration
-#define SERVO_MIN       1000
-#define SERVO_MID       1500
-#define SERVO_MAX       2000
+#define SERVO_MIN 1000
+#define SERVO_MID 1500
+#define SERVO_MAX 2000
 
 // BNO055 configuration : TODO
-#define I2C_PORT        i2c1
-#define BNO055_ADDR     0x28
+#define I2C_PORT i2c1
+#define BNO055_ADDR 0x28
 
+#define NUM_THRUSTERS 6
+#define NUM_SERVOS 2
 
 // alias for constants
-const u8 thrusterPins[] = {THRUSTER_ONE, THRUSTER_TWO, THRUSTER_THREE,
-                              THRUSTER_FOUR, THRUSTER_FIVE, THRUSTER_SIX};
+const u8 thrusterPins[] =   {THRUSTER_ONE, THRUSTER_TWO, THRUSTER_THREE,
+                             THRUSTER_FOUR, THRUSTER_FIVE, THRUSTER_SIX};
 const u8 servoPins[] = {SERVO_LEFT, SERVO_RIGHT};
 const u8 killSwitch = KILLSWITCH;
-const u8 numThrusters = 6;
-const u8 numServos = 2;
+const u8 numThrusters = NUM_THRUSTERS;
+const u8 numServos = NUM_SERVOS;
+
+// global finite state machine
+#define STATE_STOPPED 0
+#define STATE_OPERATIONAL 1
+
+u8 fsm_state = STATE_STOPPED;
 
 /*** SECTION: UTILITIES ***/
 
@@ -60,26 +78,26 @@ bool assertRange(i32 value, i32 min, i32 max) {
 }
 
 /*** SECTION: COMMAND HEADERS ***/
-void cmdTest(u8 len, u8* data);
-void cmdReset(u8 len, u8* data);
-void cmdContinue(u8 len, u8* data);
-void cmdStop(u8 len, u8* data);
-void cmdGetAttr(u8 len, u8* data);
+void cmdTest(u8 len, u8 *data);
+void cmdReset(u8 len, u8 *data);
+void cmdContinue(u8 len, u8 *data);
+void cmdStop(u8 len, u8 *data);
+void cmdGetAttr(u8 param, u8 len, u8 *data);
 
-void cmdThruster(u8 len, u8* data);
-void cmdThrusterMask(u8 len, u8* data);
-void cmdGetThruster(u8 len, u8* data);
+void cmdThruster(u8 param, u8 len, u8 *data);
+void cmdThrusterMask(u8 param, u8 len, u8 *data);
+void cmdGetThruster(u8 param, u8 len, u8 *data);
 
-void cmdServo(u8 len, u8* data);
-void cmdGetServo(u8 len, u8* data);
-void cmdGetSensor(u8 len, u8* data);
+void cmdServo(u8 param, u8 len, u8 *data);
+void cmdGetServo(u8 param, u8 len, u8 *data);
+void cmdGetSensor(u8 param, u8 len, u8 *data);
 
-void cmdSetAutoReport(u8 len, u8* data);
+void cmdSetAutoReport(u8 param, u8 len, u8 *data);
 
 // responses
 
 void retHello();
-void retEcho(u8* data);
+void retEcho(u8 *data);
 void retAttr(u8 attr);
 void retSuccess(bool success);
 
@@ -96,12 +114,12 @@ void retIntegerData(u8 param, u16 data);
 
 /*** SECTION: COMMUNICATIONS ***/
 
-#define MAX_UART_QUEUE      45
-#define PACKET_HEADER       0x4d
-#define PACKET_FOOTER       0x5c
+#define MAX_UART_QUEUE 45
+#define PACKET_HEADER 0x4d
+#define PACKET_FOOTER 0x5c
 
 u8 queue[MAX_UART_QUEUE];
-u8* queuePtr = queue;
+u8 *queuePtr = queue;
 u8 lrc = 0x00;
 u8 packetLength = 0;
 
@@ -131,12 +149,13 @@ void readByte(u8 c) {
 void parsePacket() {
     // by this point, the packet's structure must be valid.
     // but make sure header is correct for sanity's sake
-    if (queue[0] != PACKET_HEADER) return;
+    if (queue[0] != PACKET_HEADER)
+        return;
 
     u8 cmd = queue[1];
     u8 param = queue[2];
     u8 len = queue[3];
-    u8* data = queue + 4;
+    u8 *data = queue + 4;
 
     // temporary
     return;
@@ -203,7 +222,49 @@ void readUART() {
     }
 }
 
+/*** SECTION: FINITE STATE MACHINE & RESET ***/
+
+void setupLEDs() {
+    gpio_init(GREEN_LED);
+    gpio_init(RED_LED);
+    gpio_set_dir(GREEN_LED, GPIO_OUT);
+    gpio_set_dir(RED_LED, GPIO_OUT);
+    gpio_put(GREEN_LED, 0);
+    gpio_put(RED_LED, 0);
+}
+
+void updateLEDs() {
+    if (fsm_state == STATE_OPERATIONAL) {
+        gpio_put(GREEN_LED, 1);
+        gpio_put(RED_LED, 0);
+    } else {
+        gpio_put(GREEN_LED, 0);
+        gpio_put(RED_LED, 1);
+    }
+}
+
+void fsm_reset() {
+    if (fsm_state == STATE_OPERATIONAL)
+        fsm_stop();
+    // TODO: FSM reset
+}
+
+void fsm_continue() {
+    if (fsm_state == STATE_STOPPED)
+        fsm_state = STATE_OPERATIONAL;
+}
+
+void fsm_stop() {
+    if (fsm_state == STATE_OPERATIONAL)
+        halt();
+}
+
 /*** SECTION: THRUSTERS AND SERVOS ***/
+
+u16 thrusterPos[6];
+u16 targetThrusterPos[6];
+u64 prevThrusterLoopMicroseconds;
+u16 servoPos[2];
 
 void initOneShot125(uint pin) {
     // initialize the pin
@@ -217,10 +278,9 @@ void initOneShot125(uint pin) {
     pwm_config config = pwm_get_default_config();
 
     // OneShot125 will run where 1000-2000 map to 125us-250us
-    // 96MHz core divided by 12 results in 8MHz, divided by 3999+1 results in 2kHz loop
-    // 1000/4000 * 500us = 125us
-    // 1500/4000 * 500us = 192us
-    // 2000/4000 * 500us = 250us
+    // 96MHz core divided by 12 results in 8MHz, divided by 3999+1 results in 2kHz
+    // loop 1000/4000 * 500us = 125us 1500/4000 * 500us = 192us 2000/4000 * 500us
+    // = 250us
     pwm_config_set_clkdiv_int(&config, 12);
     pwm_init(slice, &config, true);
     pwm_set_wrap(slice, 3999);
@@ -245,9 +305,8 @@ void initServo(uint pin) {
     pwm_config config = pwm_get_default_config();
 
     // OneShot125 will run where 1000-2000 map to 125us-250us
-    // 96MHz core divided by 96 results in 1MHz, divided by 19999+1 results in 50Hz loop
-    // 1000/20000 * 20000us = 1000us
-    // 1500/20000 * 20000us = 1500us
+    // 96MHz core divided by 96 results in 1MHz, divided by 19999+1 results in
+    // 50Hz loop 1000/20000 * 20000us = 1000us 1500/20000 * 20000us = 1500us
     // 2000/20000 * 20000us = 2000us
     pwm_config_set_clkdiv_int(&config, 96);
     pwm_init(slice, &config, true);
@@ -256,8 +315,11 @@ void initServo(uint pin) {
 }
 
 void setServo(uint servo, uint level) {
+    servoPos[servo] = level;
+
     // level: [1000, 2000]
-    if (!assertRange(level, 1000, 2000)) return;
+    if (!assertRange(level, 1000, 2000))
+        return;
 
     u8 slice = pwm_gpio_to_slice_num(servoPins[servo]);
     u8 channel = pwm_gpio_to_channel(servoPins[servo]);
@@ -265,9 +327,10 @@ void setServo(uint servo, uint level) {
     pwm_set_chan_level(slice, channel, level);
 }
 
-void setThruster(uint thruster, uint level) {
+void runThruster(uint thruster, uint level) {
     // level: [0, 1000]
-    if (!assertRange(level, 0, 1000)) return;
+    if (!assertRange(level, 0, 1000))
+        return;
 
     u8 slice = pwm_gpio_to_slice_num(thrusterPins[thruster]);
     u8 channel = pwm_gpio_to_channel(thrusterPins[thruster]);
@@ -275,12 +338,47 @@ void setThruster(uint thruster, uint level) {
     pwm_set_chan_level(slice, channel, level + 1000);
 }
 
+void setThrusterTarget(uint thruster, uint level) {
+    targetThrusterPos[thruster] = level;
+}
+
+void setThruster(uint thruster, uint level) { thrusterPos[thruster] = level; }
+
 void setupOutputs() {
     for (int i = 0; i < numThrusters; ++i) {
         initOneShot125(thrusterPins[i]);
+        thrusterPos[i] = 1500;
+        targetThrusterPos[i] = 1500;
     }
     for (int i = 0; i < numServos; ++i) {
         initServo(servoPins[i]);
+        servoPos[i] = 1500;
+    }
+
+    prevThrusterLoopMicroseconds = to_us_since_boot(get_absolute_time());
+}
+
+void loopOutputs() {
+    u64 now = to_us_since_boot(get_absolute_time());
+    u64 elapsed_us = prevThrusterLoopMicroseconds - now;
+
+    // set each output to current value
+    for (int i = 0; i < numThrusters; ++i) {
+        runThruster(i, thrusterPos[i]);
+    }
+    // lerp each output to new value (closer to target)
+    for (int i = 0; i < numThrusters; ++i) {
+        u16 targetDelta = abs(targetThrusterPos[i] - thrusterPos[i]);
+        i8 sign = targetThrusterPos[i] - thrusterPos[i] > 0 ? 1 : -1;
+        u16 maxDelta = MIN(MAX_DELTA_POS * elapsed_us / 1000000, 0xFFFF);
+
+        i16 movement = MIN(targetDelta, maxDelta) * sign;
+        thrusterPos[i] += movement;
+    }
+
+    // set each servo to current value
+    for (int i = 0; i < numServos; ++i) {
+        setServo(i, servoPos[i]);
     }
 }
 
@@ -314,12 +412,13 @@ void initVoltSensor() {
 float getVoltage() {
     adc_select_input(VOLTAGE_SENSOR - 26);
     u16 val = adc_read();
-    // conversion factor should be 7.8 * AREF, divide by 2^12 for unit conversion factor
+    // conversion factor should be 7.8 * AREF, divide by 2^12 for unit conversion
+    // factor
     const float conversionFactor = 7.8 * 3.3 / (1 << 12);
     return val * conversionFactor;
 }
 
-void initVoltSensor() {
+void initDepthSensor() {
     adc_init();
     // does all our gpio_... work for us
     adc_gpio_init(DEPTH_SENSOR);
@@ -327,7 +426,7 @@ void initVoltSensor() {
     adc_select_input(DEPTH_SENSOR - 26);
 }
 
-u16 getVoltage() {
+u16 getDepth() {
     adc_select_input(DEPTH_SENSOR - 26);
     u16 val = adc_read();
     // honestly just return the absolute value, we can calibrate in software
@@ -335,33 +434,100 @@ u16 getVoltage() {
 }
 
 /*** SECTION: COMMANDS ***/
-void cmdTest(u8 len, u8* data) {
-    if (len == 0) retHello();
-    else retEcho(data);
+void cmdTest(u8 len, u8 *data) {
+    if (len == 0)
+        retHello();
+    else
+        retEcho(data);
 }
 
-void cmdReset(u8 len, u8* data) {
+void cmdReset(u8 len, u8 *data) { retSuccess(fsm_reset()); }
 
+void cmdContinue(u8 len, u8 *data) { retSuccess(fsm_continue()); }
+
+void cmdStop(u8 len, u8 *data) { retSuccess(fsm_stop()); }
+
+void cmdGetAttr(u8 param, u8 len, u8 *data) {
+    if (param == 0)
+        retAttr(fsm_state);
+    else
+        retSuccess(false);
 }
 
-void cmdContinue(u8 len, u8* data);
-void cmdStop(u8 len, u8* data);
-void cmdGetAttr(u8 len, u8* data);
+void cmdThruster(u8 param, u8 len, u8 *data) {
+    if ((param < 0x10 || param > 0x15) && param != 0x1F)
+        return retSuccess(false);
 
-void cmdThruster(u8 param, u8 len, u8* data);
-void cmdThrusterMask(u8 len, u8* data);
-void cmdGetThruster(u8 param, u8 len, u8* data);
+    if (len == 2) {
+        u16 val = data[0] * 0xFF + data[1];
+        setThrusterTarget(param - 0x10, val);
+    }
 
-void cmdServo(u8 param, u8 len, u8* data);
-void cmdGetServo(u8 param, u8 len, u8* data);
-void cmdGetSensor(u8 param, u8 len, u8* data);
+    if (len == 12) {
+        for (int i = 0; i < 6; ++i) {
+            u16 val = data[i * 2] * 0xFF + data[i * 2 + 1];
+            setThrusterTarget(i, val);
+        }
+    }
+}
 
-void cmdSetAutoReport(u8 len, u8* data);
+void cmdThrusterMask(u8 param, u8 len, u8 *data) {
+    if (param >> 6 != 0b11)
+        return retSuccess(false);
+
+    if (len == 2) {
+        u8 param_ptr = param;
+        u16 val = data[0] * 0xFF + data[1];
+
+        for (int i = 0; i < 6; ++i) {
+            param_ptr >>= 1;
+            if (param_ptr & 0b1) {
+                setThrusterTarget(i, val);
+            }
+        }
+    }
+}
+
+void cmdGetThruster(u8 param, u8 len, u8 *data) {
+    if ((param < 0x10 || param > 0x15) && param != 0x1F)
+        return retSuccess(false);
+
+    if (param == 0x1F) return retAllThrusters();
+    else return retThruster(param - 0x10);
+}
+
+void cmdServo(u8 param, u8 len, u8 *data) {
+    if (param != 0x20 && param != 0x21 && param != 0x25) return retSuccess(false);
+
+    if (len == 2) {
+        u16 val = data[0] * 0xFF + data[1];
+        setServo(param - 0x20, val);
+    }
+
+    if (len == 4) {
+        u16 valA = data[0] * 0xFF + data[1];
+        u16 valB = data[2] * 0xFF + data[3];
+        setServo(0x20, valA);
+        setServo(0x21, valB);
+    }
+}
+
+void cmdGetServo(u8 param, u8 len, u8 *data) {
+    if ((param < 0x20 || param > 0x21) && param != 0x2F)
+        return retSuccess(false);
+
+    if (param == 0x2F) return retAllServos();
+    else return retServo(param - 0x20);
+}
+
+void cmdGetSensor(u8 param, u8 len, u8 *data);
+
+void cmdSetAutoReport(u8 len, u8 *data);
 
 // responses
 
 void retHello();
-void retEcho(u8* data);
+void retEcho(u8 *data);
 void retAttr(u8 attr);
 void retSuccess(bool success);
 
@@ -376,7 +542,6 @@ void retVector3Data(u8 param, float x, float y, float z);
 void retQuaternionData(u8 param, float w, float x, float y, float z);
 void retIntegerData(u8 param, u16 data);
 
-
 /*** SECTION: MAIN ***/
 
 void setup() {
@@ -386,22 +551,21 @@ void setup() {
     initKillSwitch(killSwitch);
     initVoltSensor();
     setupUART();
+    setupLEDs();
 }
-
 
 void loop() {
     readUART();
+    updateLEDs();
+    loopOutputs();
 }
 
 int main() {
     setup();
 
-    while(true) {
+    while (true) {
         loop();
     }
 
     return 0;
 }
-
-
-
