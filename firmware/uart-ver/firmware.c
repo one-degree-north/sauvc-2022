@@ -503,7 +503,9 @@ void cmdContinue(u8 len, u8 *data) { retSuccess(fsm_continue()); }
 void cmdStop(u8 len, u8 *data) { retSuccess(fsm_stop()); }
 
 void cmdGetAttr(u8 param, u8 len, u8 *data) {
-    if (param == 0)
+    if (param == 0x00)
+        retAttr(1);
+    else if (param == 0x01)
         retAttr(fsm_state);
     else
         retSuccess(false);

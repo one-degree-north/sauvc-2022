@@ -1,4 +1,4 @@
-# utils.py
+# mcu_utils.py
 # various utilities for the other scripts.
 
 from typing import Union, List, Tuple
@@ -55,3 +55,19 @@ class Vector2:
     def __init__(self, x: float, y: float):
         self.x = x
         self.y = y
+
+    @staticmethod
+    def new():
+        return Vector2(0, 0)
+
+
+class Quaternion:
+    def __init__(self, w: float, x: float, y: float, z: float):
+        self.w = w
+        self.x = x
+        self.y = y
+        self.z = z
+
+    @staticmethod
+    def new():
+        return Quaternion(0, 0, 0, 0)
