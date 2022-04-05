@@ -31,6 +31,7 @@ class SensorData:
     voltage: float
     depth: float
     killswitch: bool
+    other: str
 
     def __init__(self):
         accel = Vector3.new()
@@ -45,6 +46,7 @@ class SensorData:
         voltage = 12  # hopefully!
         depth = 0
         killswitch = False
+        other = ''
 
 
 @dataclass
@@ -62,3 +64,34 @@ class ThrusterServoData:
     def __init__(self):
         thrusters = tuple([PWMValue(1500) for i in range(6)])
         servos = tuple([PWMValue(1500) for i in range(2)])
+
+
+@dataclass
+class Packet:
+    data: bytes
+
+
+@dataclass
+class IncompletePacket:
+    header: int
+    cmd: int
+    param: int
+    len: int
+    data: list[int]
+    lrc: int
+    footer: int
+
+    def __init__(self):
+        pass
+
+    def complete(self) -> bool:
+        return self.header and self.cmd and self.param and \
+               self.len and self.data and self.lrc and self.footer and \
+               len(self.data) == self.len
+
+# dummy boolean container class for signaling purposes
+class Signal:
+    enabled: bool
+
+    def __init__(self, enabled: bool):
+        self.enabled = enabled

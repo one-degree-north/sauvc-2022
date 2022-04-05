@@ -2,4 +2,5 @@ from utils import *
 from mcu_utils import *
 from interface import *
 
-def cmd_hello(mcu: MCUInterface):
+def cmd_test(mcu: MCUInterface):
+    pass

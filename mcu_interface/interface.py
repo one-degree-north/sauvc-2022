@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod, abstractproperty
 from typing import Union
 import serial
+from queue import Queue
 import threading
 from utils import *
 from mcu_utils import *
@@ -31,8 +32,26 @@ class UARTMCUInterface(MCUInterface):
         # create the serial object with no port since we do not want to connect
         self.ser = serial.Serial(None, 230400)
         self.ser.port = port
+        self.write_thread = threading.Thread(target=self._write)
+        self.write_queue = Queue()
+        self.read_thread = threading.Thread(target=self._read)
+        self.build_packet = Packet
+        self.enable_signal = Signal(False)
+        self.data = super().sensor_data
+
+    def _write(self):
+        while self.enable_signal.enabled:
+            if self.write_queue.not_empty:
+                pkt: Packet = self.write_queue.get_nowait()
+                self.ser.write(pkt.data)
+
+    def _read(self):
+        while self.enable_signal.enabled:
+            new_bytes = self.ser.read_all()
+            # TODO: DO DO DO DO DO
 
     def start(self):
+        self.enable_signal.enabled = True
         if not self.ser.is_open:
             self.ser.open()
 
