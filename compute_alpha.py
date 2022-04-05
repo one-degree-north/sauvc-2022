@@ -2,8 +2,8 @@ import serial
 import time
 
 class ComputeAlpha:
-    def __init__(self, ser: Serial, f: int, theta_max: int):
-        self.ser = ser
+    def __init__(self, mcu: UARTMCUInterface, f: int, theta_max: int):
+        self.mcu = mcu
         self.f = f
         self.theta_max = theta_max
         
@@ -13,7 +13,7 @@ class ComputeAlpha:
         return omega, theta
     
     def write(self, alpha):
-        self.ser.write(alpha)
+        mcu.write_queue.append(alpha)
     
     def compute_natural(self, omega1, omega2, t1, t2):
         return((omega2 - omega1)/(t2 - t1))
