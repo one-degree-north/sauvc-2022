@@ -58,7 +58,7 @@
 #define SERVO_MID 1500
 #define SERVO_MAX 2000
 
-// BNO055 configuration : TODO
+// BNO055 configuration
 #define I2C_PORT i2c1
 #define BNO055_ADDR 0x28
 
