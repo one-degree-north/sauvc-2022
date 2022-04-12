@@ -203,3 +203,26 @@ def LRC(data: Union[list[int], bytes]) -> int:
     lrc = (lrc ^ 0xFF) + 1
     lrc &= 0xFF
     return lrc
+
+def depth_mapping(value: int) -> float:
+    volts = value / 0xFFFF * 3.3
+    kPa = (volts - 0.5) * 400 + 100
+    meters = (kPa - 100) / 9.78
+    return meters
+
+
+SENSOR_TYPES = {
+        SENSOR_ACCEL: Vector3,
+        SENSOR_MAG: Vector3,
+        SENSOR_GYRO: Vector3,
+        SENSOR_EULER: Vector3,
+        SENSOR_QUAT: Quaternion,
+        SENSOR_LINACCEL: Vector3,
+        SENSOR_GRAVITY: Vector3,
+        SENSOR_CALIB: int,
+        SENSOR_SYSTEM: int,
+        SENSOR_TEMP: int,
+        SENSOR_VOLT: float,
+        SENSOR_DEPTH: int,
+        SENSOR_KILLSWITCH: int
+}

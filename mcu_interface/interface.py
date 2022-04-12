@@ -6,6 +6,7 @@ from queue import Queue
 import threading
 from utils import *
 from mcu_utils import *
+from mcu_constants import *
 
 
 class MCUInterface(ABC):
@@ -75,18 +76,64 @@ class UARTMCUInterface(MCUInterface):
         elif packet.cmd == 0x1A:
             # thruster positions
             if packet.len == 2 and THRUSTER_ONE <= packet.param <= THRUSTER_SIX:
-                self.data.outputs.update(packet.param, struct.unpack('=H', packet.data)[0])
+                self.data.outputs.update(packet.param, struct.unpack('>H', packet.data)[0])
             if packet.len == 12 and packet.param == THRUSTER_ALL:
-                self.data.outputs.update_all_thrusters(struct.unpack('=HHHHHH', packet.data))
+                self.data.outputs.update_all_thrusters(struct.unpack('>HHHHHH', packet.data))
         elif packet.cmd == 0x2A:
             # servo positions
             if packet.len == 2 and SERVO_LEFT <= packet.param <= SERVO_RIGHT:
-                self.data.outputs.update(packet.param, struct.unpack('=H', packet.data)[0])
+                self.data.outputs.update(packet.param, struct.unpack('>H', packet.data)[0])
             if packet.len == 4 and packet.param == SERVO_ALL:
-                self.data.outputs.update_all_servos(struct.unpack('=HH', packet.data))
+                self.data.outputs.update_all_servos(struct.unpack('>HH', packet.data))
+        elif packet.cmd == 0x33:
+            # some type of sensor data
+            new_data = None
+            if packet.len == 2:
+                new_data = struct.unpack('>H', packet.data)[0]
+            elif packet.len == 4:
+                new_data = struct.unpack('>f', packet.data)[0]
+            elif packet.len == 12:
+                new_data = Vector3.from_arr(struct.unpack('>fff', packet.data))
+            elif packet.len == 16:
+                new_data = Quaternion.from_arr(struct.unpack('>ffff', packet.data)
 
+            # make sure type is correct
+            if packet.param in SENSOR_TYPES:
+                assert type(new_data) == SENSOR_TYPES[packet.param], f"wrong type for packet type {packet.param}, expected {SENSOR_TYPES[packet.param]}, got {type(new_data)}"
+            else:
+                print("?????????")
 
-
+            # every possible packet...
+            if packet.param == SENSOR_ACCEL:
+                self.data.accel = new_data
+            elif packet.param == SENSOR_MAG:
+                self.data.mag = new_data
+            elif packet.param == SENSOR_GYRO:
+                self.data.gyro = new_data
+            elif packet.param == SENSOR_EULER:
+                self.data.orientation = new_data
+            elif packet.param == SENSOR_QUATERNION:
+                self.data.quaternion = new_data
+            elif packet.param == SENSOR_LINACCEL:
+                self.data.linaccel = new_data
+            elif packet.param == SENSOR_GRAVITY:
+                self.data.gravity = new_data
+            elif packet.param == SENSOR_CALIBRATION:
+                self.data.status.calib_sys = new_data & 0b11000000
+                self.data.status.calib_gyr = new_data & 0b00110000
+                self.data.status.calib_acc = new_data & 0b00001100
+                self.data.status.calib_mag = new_data & 0b00000011
+            elif packet.param == SENSOR_SYSTEM:
+                self.data.status.sys_status = new_data & 0xFF00
+                self.data.status.sys_err    = new_data & 0x00FF
+            elif packet.param == SENSOR_TEMP:
+                self.data.temperature = new_data
+            elif packet.param == SENSOR_VOLT:
+                self.data.voltage = new_data
+            elif packet.param == SENSOR_DEPTH:
+                self.data.depth = depth_mapping(new_data)
+            elif packet.param == SENSOR_KILLSWITCH:
+                self.data.killswitch = new_data
 
     def start(self):
         self.enable_signal.enabled = True
@@ -99,6 +146,14 @@ class UARTMCUInterface(MCUInterface):
 
     def send_bytes(self, data: bytes):
         self.ser.write(data)
+
+    def send_packet(self, command: int, param: int, length: int, data: Union[bytes, list[int]]):
+        to_lrc = bytes([command, param, length]) + bytes(data)
+        lrc = LRC(to_lrc)
+
+        trmt = bytes([HEADER_TRMT, command, param, length]) + bytes(data) + bytes([lrc, FOOTER_TRMT])
+
+        self.send_bytes(trmt)
 
     def send_data(self, data: Union[list[Union[int, str]], str]):
         if type(data) == str:

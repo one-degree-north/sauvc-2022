@@ -193,8 +193,48 @@ void parsePacket() {
     u8 len = queue[3];
     u8 *data = queue + 4;
 
-    // temporary
-    return;
+    switch (cmd) {
+        case 0x00:
+            cmdTest(len, data);
+            break;
+        case 0x01:
+            // reset();
+            cmdReset(len, data);
+            break;
+        case 0x02:
+            cmdContinue(len, data);
+            break;
+        case 0x03:
+            // halt();
+            cmdStop(len, data);
+            break;
+        case 0x0A:
+            cmdGetAttr(param, len, data);
+            break;
+        case 0x18:
+            cmdThruster(param, len, data);
+            break;
+        case 0x19:
+            cmdThrusterMask(param, len, data);
+            break;
+        case 0x1A:
+            cmdGetThruster(param, len, data);
+            break;
+        case 0x28:
+            cmdServo(param, len, data);
+            break;
+        case 0x2A:
+            cmdGetServo(param, len, data);
+            break;
+        case 0x32:
+            cmdGetSensor(param, len, data);
+            break;
+        case 0x35:
+            cmdSetAutoReport(param, len, data);
+            break;
+        default:
+            break;
+    }
 }
 
 // parse the byte c as part of the packet

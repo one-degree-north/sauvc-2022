@@ -12,6 +12,23 @@ class Vector3:
         self.y = y
         self.z = z
 
+    def __getitem__(self, key):
+        assert type(key) == int and 0 <= key <= 2
+        return (self.x, self.y, self.z)[key]
+
+    def __setitem__(self, key, newvalue):
+        assert type(key) == int and 0 <= key <= 2
+        assert type(newvalue) == float
+        if key == 0:
+            self.x = newvalue
+        if key == 1:
+            self.y = newvalue
+        if key == 2:
+            self.z = newvalue
+
+    def __len__(self):
+        return 3
+
     def set_axis(self, axis: int, value: float):
         if axis == 0:
             self.x = value
@@ -56,6 +73,21 @@ class Vector2:
         self.x = x
         self.y = y
 
+    def __getitem__(self, key):
+        assert type(key) == int and 0 <= key <= 1
+        return (self.x, self.y, self.z)[key]
+
+    def __setitem__(self, key, newvalue):
+        assert type(key) == int and 0 <= key <= 1
+        assert type(newvalue) == float
+        if key == 0:
+            self.x = newvalue
+        if key == 1:
+            self.y = newvalue
+
+    def __len__(self):
+        return 2
+
     @staticmethod
     def new():
         return Vector2(0, 0)
@@ -68,6 +100,29 @@ class Quaternion:
         self.y = y
         self.z = z
 
+    def __getitem__(self, key):
+        assert type(key) == int and 0 <= key <= 3
+        return (self.w, self.x, self.y, self.z)[key]
+
+    def __setitem__(self, key, newvalue):
+        assert type(key) == int and 0 <= key <= 3
+        assert type(newvalue) == float
+        if key == 0:
+            self.w = newvalue
+        if key == 1:
+            self.x = newvalue
+        if key == 2:
+            self.y = newvalue
+        if key == 3:
+            self.z = newvalue
+
+    def __len__(self):
+        return 4
+
     @staticmethod
     def new():
         return Quaternion(0, 0, 0, 0)
+
+    @staticmethod
+    def from_arr(i: Union[List, Tuple]):
+        return Quaternion(i[0], i[1], i[2], i[3])s
