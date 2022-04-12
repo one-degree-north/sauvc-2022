@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from utils import *
-from mcu_constants import *
+from mcu_interface.mcu_constants import *
 
 
 @dataclass

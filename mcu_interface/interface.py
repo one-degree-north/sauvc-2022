@@ -5,13 +5,11 @@ import struct
 from queue import Queue
 import threading
 from utils import *
-from mcu_utils import *
-from mcu_constants import *
+from mcu_interface.mcu_utils import *
+from mcu_interface.mcu_constants import *
 
 
 class MCUInterface(ABC):
-    sensor_data: SensorData
-
     @abstractmethod
     def start(self):
         pass
@@ -39,7 +37,7 @@ class UARTMCUInterface(MCUInterface):
         self.read_thread = threading.Thread(target=self._read)
         self.build_packet = IncompletePacket()
         self.enable_signal = Signal(False)
-        self.data = super().sensor_data
+        self.data = SensorData()
 
     def _write(self):
         while self.enable_signal.enabled:
@@ -95,7 +93,7 @@ class UARTMCUInterface(MCUInterface):
             elif packet.len == 12:
                 new_data = Vector3.from_arr(struct.unpack('>fff', packet.data))
             elif packet.len == 16:
-                new_data = Quaternion.from_arr(struct.unpack('>ffff', packet.data)
+                new_data = Quaternion.from_arr(struct.unpack('>ffff', packet.data))
 
             # make sure type is correct
             if packet.param in SENSOR_TYPES:

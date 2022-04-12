@@ -1,7 +1,7 @@
 from utils import *
-from mcu_utils import *
-from mcu_constants import *
-from interface import *
+from mcu_interface.mcu_utils import *
+from mcu_interface.mcu_constants import *
+from mcu_interface.interface import *
 
 def cmd_test(mcu: MCUInterface):
     mcu.send_packet(0x00, 0x00, 0x00, bytes([]))

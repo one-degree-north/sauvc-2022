@@ -3,7 +3,7 @@
 
 from typing import Union, List, Tuple
 
-INVALID = 0x82D3F2
+INVALID = 0x82D3F263
 
 
 class Vector3:
@@ -125,4 +125,4 @@ class Quaternion:
 
     @staticmethod
     def from_arr(i: Union[List, Tuple]):
-        return Quaternion(i[0], i[1], i[2], i[3])s
+        return Quaternion(i[0], i[1], i[2], i[3])
