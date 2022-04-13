@@ -8,11 +8,11 @@ class GateDetection:
         
     def calculate_center(self):
         rectangle1, rectangle2 = self.orange_rectangles
-        rectangle1_x = rectangle1[0] + 0.5*rectangle1[2]
-        rectangle2_x = rectangle2[0] + 0.5*rectangle2[2]
-        rectangle1_y = rectangle1[1] + 0.5*rectangle1[3]
-        rectangle2_y = rectangle2[1] + 0.5*rectangle2[3]
-        return (np.mean([rectangle1_y, rectangle2_y]), np.mean([rectangle1_x, rectangle2_x]))
+        self.rectangle1_x = rectangle1[0] + 0.5*rectangle1[2]
+        self.rectangle2_x = rectangle2[0] + 0.5*rectangle2[2]
+        self.rectangle1_y = rectangle1[1] + 0.5*rectangle1[3]
+        self.rectangle2_y = rectangle2[1] + 0.5*rectangle2[3]
+        return (np.mean([self.rectangle1_y, self.rectangle2_y]), np.mean([self.rectangle1_x, self.rectangle2_x]))
         
     def find_orange(self):
         lower_orange = np.array([5, 50, 50])
@@ -36,4 +36,6 @@ class GateDetection:
     def run(self):
         self.find_orange()
         self.orange_rectangles = self.orange_contour_info()
-        return self.calculate_center()
+        y, x = self.calculate_center()
+        diff = 2*np.abs(x - self.rectangle1_x)
+        return [y, x, diff]
