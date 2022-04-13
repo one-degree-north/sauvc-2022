@@ -16,4 +16,5 @@ class CvResourceManager:
         return frame
     
     def close_cameras():
-        
+        self.camera_bottom.release()
+        self.camera_front.release()
