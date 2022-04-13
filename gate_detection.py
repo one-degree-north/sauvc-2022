@@ -12,7 +12,7 @@ class GateDetection:
         rectangle2_x = rectangle2[0] + 0.5*rectangle2[2]
         rectangle1_y = rectangle1[1] + 0.5*rectangle1[3]
         rectangle2_y = rectangle2[1] + 0.5*rectangle2[3]
-        return (np.mean([rectangle1_x, rectangle2_x]), np.mean([rectangle1_y, rectangle2_y]))
+        return (np.mean([rectangle1_y, rectangle2_y]), np.mean([rectangle1_x, rectangle2_x]))
         
     def find_orange(self):
         lower_orange = np.array([5, 50, 50])
