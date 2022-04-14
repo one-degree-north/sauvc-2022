@@ -1,7 +1,7 @@
-from scipy.interpolate import interp1d
 import serial
 import time
 from mcu_interface.commands import *
+from utils import *
 
 class ComputeAlpha:
     def __init__(self, mcu, f: int, theta_max: int):
@@ -17,10 +17,13 @@ class ComputeAlpha:
         self.omega = None
         self.theta = None
         self.t = time.time()
+        
+    def map(self, value, imin, imax, omin, omax):
+        return (value - imin) / (imax - imin) * (omax - omin) + omin 
     
     def write(self, alpha):
-        map = interp1d([-9,9],[1000,2000])
-        alpha = map(alpha)
+        for i in range(len(alpha)):
+            alpha[i] = self.map(alpha[i], -9, 9, 1000, 2000)
         alpha[0] = alpha[0] * 3
         alpha[1] = alpha[1] * 3
         cmd_all_thrusters(mcu, alpha)
