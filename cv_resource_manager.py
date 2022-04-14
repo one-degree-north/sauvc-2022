@@ -12,7 +12,7 @@ class CvResourceManager:
         return frame
     
     def front_camera_read():
-        _, frame = self.caamera_front.read()
+        _, frame = self.camera_front.read()
         return frame
     
     def close_cameras():
