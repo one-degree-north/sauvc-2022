@@ -29,6 +29,24 @@ def cmd_thruster(mcu: MCUInterface, thruster: int, value: int):
         thruster += THRUSTER_ONE
 
     mcu.send_packet(0x18, thruster, 2, struct.pack('>H', value))
+    
+def cmd_horizontal_thrusters(mcu: MCUInterface, values: Union[tuple[int], list[int]]):
+    assert len(values) == 2
+
+    # check through each value just in case
+    # left, right
+    for i in range(0, 2, 1):
+        assert 1000 <= val <= 2000
+        mcu.send_packet(0x18, THRUSTER_ONE+i, 2, struct.pack('>H', values[i]))
+    
+def cmd_vertical_thrusters(mcu: MCUInterface, values: Union[tuple[int], list[int]]):
+    assert len(values) == 4
+
+    # check through each value just in case
+    # front left, front right, back left, back right
+    for i in range(0, 4, 1):
+        assert 1000 <= values[i] <= 2000
+        mcu.send_packet(0x18, THRUSTER_THREE+i, 2, struct.pack('>H', values[i]))
 
 def cmd_all_thrusters(mcu: MCUInterface, values: Union[tuple[int], list[int]]):
     assert len(values) == 6
