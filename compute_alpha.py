@@ -35,8 +35,7 @@ class ComputeAlpha:
     def compute_alpha(self, omega1, omega2, ideal_theta, theta2, time_diff):
         d_theta = ideal_theta - theta2
         delta_theta = min(abs(d_theta), self.theta_max)*d_theta/abs(d_theta)
-        omega_ideal = delta_theta / time_diff
-        alpha = 2*(omega_ideal - omega2)/time_diff
+        alpha = 2*(delta_theta - omega2 * time_diff)/(time_diff**2)
         alpha = min(3, max(-3, alpha)) 
         return alpha
         
