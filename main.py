@@ -18,7 +18,7 @@ class Main:
     cam_frame = self.cv_manager.front_camera_read()
     
     self.gate_detect = GateDetection(cam_frame)
-    y, x, gate_length = self.gate_detect.run()
+    y, x, gate_length = self.gate_detect.gate_info()
     center_gate = (int(y), int(x))
     height, width = img.shape[:2]
     center_frame = (int(height/2), int(width/2))
@@ -29,7 +29,8 @@ class Main:
     distance_to = 100.0*10 # 10m
     
     self.navigate.ideal_yaw = np.arctan(distance_horizontal/distance_to)
-    self.navigate.ideal_pitch = np.arctan(distance_vertical/distance_to)
+    # self.navigate.ideal_pitch = np.arctan(distance_vertical/distance_to)
+    self.navigate.ideal_pitch = 0
     self.navigate.ideal_roll = 0
     
   def run(self):
