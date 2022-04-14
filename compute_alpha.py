@@ -27,7 +27,7 @@ class ComputeAlpha:
             alpha[i] = self.map(alpha[i], -9, 9, 1000, 2000)
         #alpha[0] = alpha[0] * 3
         #alpha[1] = alpha[1] * 3
-        cmd_thruster_mask(mcu, alpha)
+        cmd_vertical_thrusters(mcu, alpha)
     
     def compute_natural(self, omega1, omega2, t1, t2):
         return((omega2 - omega1)/(t2 - t1))
