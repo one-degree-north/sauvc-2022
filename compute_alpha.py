@@ -15,8 +15,8 @@ class ComputeAlpha:
         self.vertical_thrusters = [0, 0, 0, 0] # horizontal, vertical
         
     def read_input(self):
-        self.omega = None
-        self.theta = None
+        self.omega = self.mcu.data.gyro
+        self.theta = self.mcu.data.orientation
         self.t = time.time()
         
     def map(self, value, imin, imax, omin, omax):
@@ -48,10 +48,10 @@ class ComputeAlpha:
             omega2, theta2 = self.omega, self.theta
             t_diff = self.t - t_temp
 
-            _, omega_pitch1, omega_roll1 = omega1
-            _, omega_pitch2, omega_roll2 = omega2
-            _, theta_pitch1, theta_roll1 = theta1
-            _, theta_pitch2, theta_roll2 = theta2
+            omega_pitch1, omega_roll1, _ = omega1
+            omega_pitch2, omega_roll2, _ = omega2
+            theta_pitch1, theta_roll1, _ = theta1
+            theta_pitch2, theta_roll2, _ = theta2
 
             #alpha_yaw = self.compute_alpha(omega_yaw1, 
             #                               omega_yaw2, 
