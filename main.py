@@ -4,16 +4,24 @@ from gate_detection import GateDetection
 from mcu_interface import *
 from mcu_interface.interface import *
 
+import time
 import threading
 
-def start():
-  mcu = None
-  f = 50
-  theta_max = 0.2          # radians
-  navigate = ComputeAlpha(mcu, f, theta_max)
+mcu = None
+f = 50
+theta_max = 0.2          # radians
+speed_ms = 1700
 
-  camera_bottom_id = 1
-  camera_front_id = 0
+camera_bottom_id = 1
+camera_front_id = 0
+
+def move_forward():
+  cmd_horizontal_thrusters(mcu, [speed_ms, speed_ms]) # make the ROV move forward
+  time.sleep(2)
+  cmd_horizontal_thrusters(mcu, [1500, 1500])
+
+def start():
+  navigate = ComputeAlpha(mcu, f, theta_max)
   cv_manager = CvResourceManager(camera_bottom_id, camera_front_id)
   cam_frame = cv_manager.front_camera_read()
 
@@ -33,10 +41,10 @@ def start():
   navigate.ideal_pitch = 0
   navigate.ideal_roll = 0
   
-  cmd_thruster_mask(mcu) # make the ROV move forward
-  
-  navigate_thread = threading.Thread(target = self.navigate.run)
+  navigate_thread = threading.Thread(target = navigate.run)
   navigate_thread.start()
+  move_thread = threading.Thread(target = move_forward)
+  move_thread.start()
   
 if __name__ == '__main__':
   start()
