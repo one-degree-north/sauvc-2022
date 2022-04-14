@@ -33,7 +33,7 @@ class GateDetection:
                                np.asarray(cv2.bounding_rectangle(contours[1]))]
         return bounding_rectangles
     
-    def run(self):
+    def gate_info(self):
         self.find_orange()
         self.orange_rectangles = self.orange_contour_info()
         y, x = self.calculate_center()
