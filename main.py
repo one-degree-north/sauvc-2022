@@ -10,15 +10,10 @@ import threading
 mcu = None
 f = 50
 theta_max = 0.2          # radians
-speed_ms = 1700
+speed_ms = 1750
 
 camera_bottom_id = 1
 camera_front_id = 0
-
-def move_forward():
-  cmd_horizontal_thrusters(mcu, [speed_ms, speed_ms]) # make the ROV move forward
-  time.sleep(2)
-  cmd_horizontal_thrusters(mcu, [1500, 1500])
 
 def start():
   navigate = ComputeAlpha(mcu, f, theta_max)
@@ -41,10 +36,9 @@ def start():
   navigate.ideal_pitch = 0
   navigate.ideal_roll = 0
   
+  cmd_horizontal_thrusters(mcu, [speed_ms, speed_ms])
   navigate_thread = threading.Thread(target = navigate.run)
   navigate_thread.start()
-  move_thread = threading.Thread(target = move_forward)
-  move_thread.start()
   
 if __name__ == '__main__':
   start()
